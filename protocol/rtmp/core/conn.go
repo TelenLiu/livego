@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/binary"
+	log "github.com/sirupsen/logrus"
 	"net"
 	"time"
 
@@ -47,11 +48,11 @@ func NewConn(c net.Conn, bufferSize int) *Conn {
 
 func (conn *Conn) Read(c *ChunkStream) error {
 	for {
-		h, _ := conn.rw.ReadUintBE(1)
-		// if err != nil {
-		// 	log.Println("read from conn error: ", err)
-		// 	return err
-		// }
+		h, er := conn.rw.ReadUintBE(1)
+		if er != nil {
+			log.Println("read from conn error: ", er)
+			return er
+		}
 		format := h >> 6
 		csid := h & 0x3f
 		cs, ok := conn.chunks[csid]
