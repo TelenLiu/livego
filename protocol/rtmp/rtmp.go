@@ -252,8 +252,42 @@ func (v *VirWriter) Check() {
 	}
 }
 
+// telen 不缓存减少延迟
+func (v *VirWriter) DropPacketAll(pktQue chan *av.Packet) {
+	const keepClearDurNum = 5 //累计超过这个数量，清理一次
+	ln := len(pktQue)
+	if ln < keepClearDurNum {
+		return
+	}
+	for i := 0; i < ln; i++ {
+		tmpPkt, ok := <-pktQue
+		// try to don't drop audio
+		if ok && tmpPkt.IsAudio {
+			if len(pktQue) > maxQueueNum-2 {
+				log.Debug("drop audio pkt")
+				<-pktQue
+			} else {
+				pktQue <- tmpPkt
+			}
+
+		}
+
+		if ok && tmpPkt.IsVideo {
+			videoPkt, ok := tmpPkt.Header.(av.VideoPacketHeader)
+			// dont't drop sps config and dont't drop key frame
+			if ok && (videoPkt.IsSeq() || videoPkt.IsKeyFrame()) {
+				pktQue <- tmpPkt
+			}
+			if len(pktQue) > maxQueueNum-10 {
+				log.Debug("drop video pkt")
+				<-pktQue
+			}
+		}
+	}
+}
+
 func (v *VirWriter) DropPacket(pktQue chan *av.Packet, info av.Info) {
-	log.Warningf("[%v] packet queue max!!!", info)
+	log.Warningf("[%v] packet queue max!!!", info, time.Now().UnixMilli())
 	for i := 0; i < maxQueueNum-84; i++ {
 		tmpPkt, ok := <-pktQue
 		// try to don't drop audio
@@ -283,7 +317,6 @@ func (v *VirWriter) DropPacket(pktQue chan *av.Packet, info av.Info) {
 	log.Debug("packet queue len: ", len(pktQue))
 }
 
-//
 func (v *VirWriter) Write(p *av.Packet) (err error) {
 	err = nil
 
@@ -299,6 +332,9 @@ func (v *VirWriter) Write(p *av.Packet) (err error) {
 	if len(v.packetQueue) >= maxQueueNum-24 {
 		v.DropPacket(v.packetQueue, v.Info())
 	} else {
+		if configure.Config.GetBool("rtmp_no_cache") {
+			v.DropPacketAll(v.packetQueue)
+		}
 		v.packetQueue <- p
 	}
 

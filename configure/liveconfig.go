@@ -48,6 +48,7 @@ type ServerCfg struct {
 	RTMPAddr        string       `mapstructure:"rtmp_addr"`
 	HTTPFLVAddr     string       `mapstructure:"httpflv_addr"`
 	HLSAddr         string       `mapstructure:"hls_addr"`
+	NoCache         bool         `mapstructure:"rtmp_no_cache"` //telen 禁止缓存，防止延迟
 	HLSKeepAfterEnd bool         `mapstructure:"hls_keep_after_end"`
 	APIAddr         string       `mapstructure:"api_addr"`
 	RedisAddr       string       `mapstructure:"redis_addr"`
@@ -68,6 +69,7 @@ var defaultConf = ServerCfg{
 	RTMPAddr:        ":1935",
 	HTTPFLVAddr:     ":7001",
 	HLSAddr:         ":7002",
+	NoCache:         false,
 	HLSKeepAfterEnd: false,
 	APIAddr:         ":8090",
 	WriteTimeout:    10,
@@ -124,6 +126,7 @@ func initDefault() {
 	pflag.String("rtmps_key", "server.key", "key file path required for RTMPS")
 	pflag.String("httpflv_addr", ":7001", "HTTP-FLV server listen address")
 	pflag.String("hls_addr", ":7002", "HLS server listen address")
+	pflag.Bool("rtmp_no_cache", false, "cache close")
 	pflag.String("api_addr", ":8090", "HTTP manage interface server listen address")
 	pflag.String("config_file", "livego.yaml", "configure filename")
 	pflag.String("level", "info", "Log level")

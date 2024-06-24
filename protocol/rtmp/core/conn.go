@@ -2,7 +2,6 @@ package core
 
 import (
 	"encoding/binary"
-	log "github.com/sirupsen/logrus"
 	"net"
 	"time"
 
@@ -50,8 +49,8 @@ func (conn *Conn) Read(c *ChunkStream) error {
 	for {
 		h, er := conn.rw.ReadUintBE(1)
 		if er != nil {
-			log.Println("read from conn error: ", er)
-			return er
+			//log.Println("read from conn error: ", er)
+			continue
 		}
 		format := h >> 6
 		csid := h & 0x3f
@@ -170,10 +169,10 @@ const (
 )
 
 /*
-   +------------------------------+-------------------------
-   |     Event Type ( 2- bytes )  | Event Data
-   +------------------------------+-------------------------
-   Pay load for the ‘User Control Message’.
++------------------------------+-------------------------
+|     Event Type ( 2- bytes )  | Event Data
++------------------------------+-------------------------
+Pay load for the ‘User Control Message’.
 */
 func (conn *Conn) userControlMsg(eventType, buflen uint32) ChunkStream {
 	var ret ChunkStream

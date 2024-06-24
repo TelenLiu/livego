@@ -15,6 +15,9 @@
 # read_timeout: 10
 # write_timeout: 10
 
+# # NoCache RTMP模式，减少延时
+rtmp_no_cache: true
+
 # # HLS Options
 # hls_addr: ":7002"
 #use_hls_https: true
