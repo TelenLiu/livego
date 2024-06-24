@@ -61,6 +61,7 @@ Usage of ./livego:
       --level string          Log level (default "info")
       --read_timeout int      read time out (default 10)
       --rtmp_addr string      RTMP server listen address
+      --rtmp_no_cache bool    RTMP play no cache for low delay, maybe drop frames（default false）
 ```
 
 ### [Use with flv.js](https://github.com/gwuhaolin/blog/issues/3)

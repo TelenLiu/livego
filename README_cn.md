@@ -59,6 +59,7 @@ Usage of ./livego:
       --read_timeout int      读超时时间 (默认 10)
       --rtmp_addr string      RTMP 服务监听地址 (默认 ":1935")
       --write_timeout int     写超时时间 (默认 10)
+      --rtmp_no_cache bool    RTMP方式播放的时候，不缓存以达到减少延迟（会丢帧）（默认 false）
 ```
 
 ### [和 flv.js 搭配使用](https://github.com/gwuhaolin/blog/issues/3)
