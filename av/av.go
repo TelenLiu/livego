@@ -3,6 +3,7 @@ package av
 import (
 	"fmt"
 	"io"
+	"time"
 )
 
 const (
@@ -67,6 +68,7 @@ type Packet struct {
 	StreamID   uint32
 	Header     PacketHeader
 	Data       []byte
+	ReadAt     time.Time //接收到包开始分发的时间
 }
 
 type PacketHeader interface {

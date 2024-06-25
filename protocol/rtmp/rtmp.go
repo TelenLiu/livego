@@ -197,10 +197,15 @@ type VirWriter struct {
 	conn        StreamReadWriteCloser
 	packetQueue chan *av.Packet
 	WriteBWInfo StaticsBW
+	//
+	CreateAT         *time.Time //访问连接创建时间
+	LastPacketReadTM *time.Time //最后一个发送的包的读入时间
 }
 
 func NewVirWriter(conn StreamReadWriteCloser) *VirWriter {
+	now := time.Now()
 	ret := &VirWriter{
+		CreateAT:    &now,
 		Uid:         uid.NewId(),
 		conn:        conn,
 		RWBaser:     av.NewRWBaser(time.Second * time.Duration(writeTimeout)),
@@ -254,35 +259,9 @@ func (v *VirWriter) Check() {
 
 // telen 不缓存减少延迟
 func (v *VirWriter) DropPacketAll(pktQue chan *av.Packet) {
-	const keepClearDurNum = 5 //累计超过这个数量，清理一次
 	ln := len(pktQue)
-	if ln < keepClearDurNum {
-		return
-	}
 	for i := 0; i < ln; i++ {
-		tmpPkt, ok := <-pktQue
-		// try to don't drop audio
-		if ok && tmpPkt.IsAudio {
-			if len(pktQue) > maxQueueNum-2 {
-				log.Debug("drop audio pkt")
-				<-pktQue
-			} else {
-				pktQue <- tmpPkt
-			}
-
-		}
-
-		if ok && tmpPkt.IsVideo {
-			videoPkt, ok := tmpPkt.Header.(av.VideoPacketHeader)
-			// dont't drop sps config and dont't drop key frame
-			if ok && (videoPkt.IsSeq() || videoPkt.IsKeyFrame()) {
-				pktQue <- tmpPkt
-			}
-			if len(pktQue) > maxQueueNum-10 {
-				log.Debug("drop video pkt")
-				<-pktQue
-			}
-		}
+		<-pktQue
 	}
 }
 
@@ -333,7 +312,15 @@ func (v *VirWriter) Write(p *av.Packet) (err error) {
 		v.DropPacket(v.packetQueue, v.Info())
 	} else {
 		if configure.Config.GetBool("rtmp_no_cache") {
-			v.DropPacketAll(v.packetQueue)
+			pTM := p.ReadAt
+			// 连接创建10秒后，缓存大于500毫秒就清理一次
+			if v.LastPacketReadTM != nil && v.CreateAT != nil && pTM.Sub(*v.CreateAT) > time.Second*10 && pTM.Sub(*v.LastPacketReadTM) > time.Millisecond*500 {
+				ln := len(v.packetQueue)
+				if ln > 0 {
+					log.Debug("包的收发时间大于500毫秒，清除缓存包数量：", ln)
+					v.DropPacketAll(v.packetQueue)
+				}
+			}
 		}
 		v.packetQueue <- p
 	}
@@ -347,6 +334,9 @@ func (v *VirWriter) SendPacket() error {
 	for {
 		p, ok := <-v.packetQueue
 		if ok {
+			tm := p.ReadAt
+			v.LastPacketReadTM = &tm
+			//
 			cs.Data = p.Data
 			cs.Length = uint32(len(p.Data))
 			cs.StreamID = p.StreamID
@@ -472,6 +462,7 @@ func (v *VirReader) Read(p *av.Packet) (err error) {
 	p.StreamID = cs.StreamID
 	p.Data = cs.Data
 	p.TimeStamp = cs.Timestamp
+	p.ReadAt = time.Now()
 
 	v.SaveStatics(p.StreamID, uint64(len(p.Data)), p.IsVideo)
 	v.demuxer.DemuxH(p)

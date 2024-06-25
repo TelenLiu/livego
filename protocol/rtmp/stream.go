@@ -2,6 +2,7 @@ package rtmp
 
 import (
 	"fmt"
+	"github.com/gwuhaolin/livego/configure"
 	"strings"
 	"sync"
 	"time"
@@ -148,8 +149,10 @@ func (s *Stream) AddWriter(w av.WriteCloser) {
 	s.ws.Store(info.UID, pw)
 }
 
-/*检测本application下是否配置static_push,
-如果配置, 启动push远端的连接*/
+/*
+检测本application下是否配置static_push,
+如果配置, 启动push远端的连接
+*/
 func (s *Stream) StartStaticPush() {
 	key := s.info.Key
 
@@ -308,17 +311,63 @@ func (s *Stream) SendStaticPush(packet av.Packet) {
 
 func (s *Stream) TransStart() {
 	s.isStart = true
-	var p av.Packet
 
 	log.Debugf("TransStart: %v", s.info)
 
 	s.StartStaticPush()
+
+	const maxQueN = 2048
+
+	//发送数据构建一个通道处理，畅通Read的过程
+	packetQueueRead := make(chan *av.Packet, maxQueN)
+	go func() {
+		for {
+			if s.isStart == false {
+				break
+			}
+			//
+			pp, ok := <-packetQueueRead
+			if ok && pp != nil {
+				p := *pp
+
+				if s.IsSendStaticPush() {
+					s.SendStaticPush(p)
+				}
+
+				s.cache.Write(p)
+
+				s.ws.Range(func(key, val interface{}) bool {
+					v := val.(*PackWriterCloser)
+					if !v.init {
+						//log.Debugf("cache.send: %v", v.w.Info())
+						if err := s.cache.Send(v.w); err != nil {
+							log.Debugf("[%s] send cache packet error: %v, remove", v.w.Info(), err)
+							s.ws.Delete(key)
+							return true
+						}
+						v.init = true
+					} else {
+						newPacket := p
+						//writeType := reflect.TypeOf(v.w)
+						//log.Debugf("w.Write: type=%v, %v", writeType, v.w.Info())
+						if err := v.w.Write(&newPacket); err != nil {
+							log.Debugf("[%s] write packet error: %v, remove", v.w.Info(), err)
+							s.ws.Delete(key)
+						}
+					}
+					return true
+				})
+			}
+		}
+		close(packetQueueRead)
+	}()
 
 	for {
 		if !s.isStart {
 			s.closeInter()
 			return
 		}
+		p := av.Packet{}
 		err := s.r.Read(&p)
 		if err != nil {
 			s.closeInter()
@@ -326,33 +375,21 @@ func (s *Stream) TransStart() {
 			return
 		}
 
-		if s.IsSendStaticPush() {
-			s.SendStaticPush(p)
-		}
-
-		s.cache.Write(p)
-
-		s.ws.Range(func(key, val interface{}) bool {
-			v := val.(*PackWriterCloser)
-			if !v.init {
-				//log.Debugf("cache.send: %v", v.w.Info())
-				if err = s.cache.Send(v.w); err != nil {
-					log.Debugf("[%s] send cache packet error: %v, remove", v.w.Info(), err)
-					s.ws.Delete(key)
-					return true
-				}
-				v.init = true
+		if s.isStart {
+			ln := len(packetQueueRead)
+			if ln > maxQueN-84 { //对读入进行通道缓存
+				<-packetQueueRead
 			} else {
-				newPacket := p
-				//writeType := reflect.TypeOf(v.w)
-				//log.Debugf("w.Write: type=%v, %v", writeType, v.w.Info())
-				if err = v.w.Write(&newPacket); err != nil {
-					log.Debugf("[%s] write packet error: %v, remove", v.w.Info(), err)
-					s.ws.Delete(key)
+				if configure.Config.GetBool("rtmp_no_cache") {
+					if ln > 5 {
+						for i := 0; i < ln; i++ {
+							<-packetQueueRead
+						}
+					}
 				}
+				packetQueueRead <- &p
 			}
-			return true
-		})
+		}
 	}
 }
 
